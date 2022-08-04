@@ -1,216 +1,239 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-	<title>Messaging Auto-Monitor</title>
+  <title>Messaging Auto-Monitor</title>
 
-    <link rel="stylesheet" type="text/css" href="css/blocks.css">
+  <link rel="stylesheet" type="text/css" href="css/blocks.css">
 
-	<style type="text/css">
-		.row {
-			margin-top: 8px;
-		}
-	</style>
+  <style type="text/css">
+    .row {
+      margin-top: 8px;
+    }
+  </style>
 
-	<script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
-	<script src="https://sdk-cdn.mypurecloud.com/javascript/88.0.0/purecloud-platform-client-v2.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.3.1.min.js"
+    integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+  <script src="https://sdk-cdn.mypurecloud.com/javascript/88.0.0/purecloud-platform-client-v2.min.js"></script>
 
-	<script type="text/javascript">
-	
-		//
-		// Instantiate variables
-		//
-		
-		const clientId = '0959864a-9256-47e4-aa35-d7db53d61731';
-		const redirectUri = window.location.href;
+  <script type="text/javascript">
 
-		// Set Genesys Cloud objects
-		const platformClient = require('platformClient');
-		const client = platformClient.ApiClient.instance;
-		const notificationsApi = new platformClient.NotificationsApi();
-		const routingApi = new platformClient.RoutingApi();
-		const conversationsApi = new platformClient.ConversationsApi();
+    //
+    // Instantiate variables
+    //
 
-		// Set Genesys Cloud settings
-		client.setEnvironment('mypurecloud.de');
-		client.setPersistSettings(true, 'Messaging Monitor');
+    const clientId = '0959864a-9256-47e4-aa35-d7db53d61731'; //NEED TO PUT IN AN IMPLICIT TOKEN GRANT OAUTH CLIENT ID
+    const redirectUri = window.location.href;
 
-		// Local vars
-		let userConversationsTopic = '';
-		let webSocket = null;
-		let notificationChannel, monitoredAgent;
-        var mostRecentMessageTime = '';
+    // Set Genesys Cloud objects
+    const platformClient = require('platformClient');
+    const client = platformClient.ApiClient.instance;
+    const notificationsApi = new platformClient.NotificationsApi();
+    const routingApi = new platformClient.RoutingApi();
+    const conversationsApi = new platformClient.ConversationsApi();
 
-		$(document).ready(() => {
-			// Authenticate with Genesys Cloud
-			client.loginImplicitGrant(clientId, redirectUri)
-			
-				.then(() => {
-					console.log('Logged in');
+    // Set Genesys Cloud settings
+    client.setEnvironment('mypurecloud.de');
+    client.setPersistSettings(true, 'Messaging monitor');
 
-					// Get queues
-					return getQueues();
-				})
-				
-				.then((queuesListing) => {
-					console.log(`Found ${queuesListing.entities.length} queues`);
+    // Local vars
+    let userConversationsTopic = '';
+    let webSocket = null;
+    let notificationChannel, monitoredAgent;
+    var mostRecentMessageTime = '';
 
-					// Create select option for each queue
-					queuesListing.entities.forEach((queue) => {
-						var option = document.createElement("option");
-						option.text = queue.name;	//user-friendly name
-						option.value = queue.id;		//Genesys Cloud queueId
-						document.getElementById("queuesDropDown").add(option);
-					});
-				})
-				
-				.then(() => {
-					// Create notification channel
-					return notificationsApi.postNotificationsChannels();
-				})
-				
-				.then((channel) => {
-					console.log('channel: ', channel);
-					notificationChannel = channel;
+    $(document).ready(() => {
+      // Authenticate with Genesys Cloud
+      client.loginImplicitGrant(clientId, redirectUri)
 
-					// Set up web socket
-					webSocket = new WebSocket(notificationChannel.connectUri);
-					webSocket.onmessage = handleNotification;
-				})
+        .then(() => {
+          console.log('Logged in');
 
-				.catch((err) => console.error(err));
-		});
-		
-		//Retrieve up to 100 Genesys Cloud queue objects
-		function getQueues() {
-			return routingApi.getRoutingQueues({"pageSize": "100"});
-		}
-		
-		//Retrieve up to 100 Genesys Cloud members of given queue as user objects
-		function getAgents(queueId) {
-			return routingApi.getRoutingQueueUsers(queueId, {"pageSize": "100"});
-		}
-		
-		//Clear agents drop-down and refill with members of Genesys Cloud queueId
-		function updateAgents(queueId) {
-			document.getElementById('messages').innerText = '';
-			agentsDropDown = document.getElementById("agentsDropDown");
-			console.log(`Removing ${agentsDropDown.options.length} agents from menu`)
-			while (agentsDropDown.options.length) {
-				agentsDropDown.remove(0);
-			}
-			getAgents(queueId)
-			.then((agentsListing) => {
-				//Create select option for each agent
-				console.log(`Adding ${agentsListing.entities.length} agents to menu`)
-				agentsListing.entities.forEach((user) => {
-					var option = document.createElement("option");
-					option.text = user.name;		//user-friendly agent name
-					option.value = user.id;		//Genesys Cloud userId
-					document.getElementById("agentsDropDown").add(option);
-				});
-			});
-		}
+          // Get queues
+          return getQueues();
+        })
 
-		//Subscribe to conversation notifications for Genesys Cloud userId
-		function setAgent(agentId) {
-			document.getElementById('messages').innerText = '';
-			console.log(`Setting agent to (${agentId})`);
-			monitoredAgent = agentId;
-			userConversationsTopic = `v2.users.${monitoredAgent}.conversations`;
-			return notificationsApi.putNotificationsChannelSubscriptions(notificationChannel.id, [ { id: userConversationsTopic } ]);
-		}
+        .then((queuesListing) => {
+          console.log(`Found ${queuesListing.entities.length} queues`);
 
-		// Handle incoming Genesys Cloud notification from WebSocket
-		function handleNotification(message) {
-			// Parse notification string to a JSON object
-			const notification = JSON.parse(message.data);
+          // Add a "Select Queue" option
+          var option = document.createElement("option");
+          option.text = "-- Select Queue --";
+          option.value = "0";
+          document.getElementById("queuesDropDown").add(option);
 
-			// Discard unwanted notifications
-			if (notification.topicName.toLowerCase() === 'channel.metadata') {
-				// Heartbeat
-				//console.info('Ignoring metadata: ', notification);
-				return;
+          // Create select option for each queue
+          queuesListing.entities.forEach((queue) => {
+            var option = document.createElement("option");
+            option.text = queue.name;	//user-friendly name
+            option.value = queue.id;		//Genesys Cloud queueId
+            document.getElementById("queuesDropDown").add(option);
+          });
+        })
 
-				//If customer has end time populated, conversation is ended
-			} else if (notification.eventBody.participants.find(p => p.purpose == 'customer').endTime) {
-                console.log('ending conversation');
-                closeMessage();
-            } else {
-		    	var participants = notification.eventBody.participants;
-                var messages = [];
-                var participantPurposes = [];
+        .then(() => {
+          // Create notification channel
+          return notificationsApi.postNotificationsChannels();
+        })
 
-				//parse data for arrays of messages and which party sent each
-                for (x=0; x<participants.length; x++) {
-                    if (!participants[x].endTime) {
-                        messages.push(participants[x].messages[0].messages[participants[x].messages[0].messages.length-1]);
-                        participantPurposes.push(participants[x].purpose);
-                    }
-                }
+        .then((channel) => {
+          console.log('channel: ', channel);
+          notificationChannel = channel;
 
-                var messageId = '';
-                var purpose = '';
-                var publish = false;
-                for (x=0; x<messages.length; x++) {
+          // Set up web socket
+          webSocket = new WebSocket(notificationChannel.connectUri);
+          webSocket.onmessage = handleNotification;
+        })
 
-					//dismiss any messages already published
-                    console.log('messageTime: ' + messages[x].messageTime);
-                    if (messages[x].messageTime > mostRecentMessageTime) {
-                        mostRecentMessageTime = messages[x].messageTime;
-                        messageId = messages[x].messageId;
-                        purpose = participantPurposes[x];
-                        publish = true;
-                    }
-                }
+        .catch((err) => console.error(err));
+    });
 
-				//if new messages are available, publish them to the document
-                if (publish) {
-                    conversationsApi.getConversationsMessageMessage(notification.eventBody.id, messageId)
-                    .then((messageDetail) => {
-                        console.log('messageDetail: ' + JSON.stringify(messageDetail));
-                        if (purpose == 'customer')
-                            printMessage(messageDetail.textBody, true);
-                        else
-                            printMessage(messageDetail.textBody, false);
-                    });
-                }
+    //Retrieve up to 100 Genesys Cloud queue objects
+    function getQueues() {
+      return routingApi.getRoutingQueues({ "pageSize": "100" });
+    }
+
+    //Retrieve up to 100 Genesys Cloud members of given queue as user objects
+    function getAgents(queueId) {
+      return routingApi.getRoutingQueueUsers(queueId, { "pageSize": "100" });
+    }
+
+    //Clear agents drop-down and refill with members of Genesys Cloud queueId
+    function updateAgents(queueId) {
+      if (queueId == 0) return;
+      
+      document.getElementById('messages').innerText = '';
+      agentsDropDown = document.getElementById("agentsDropDown");
+      console.log(`Removing ${agentsDropDown.options.length} agents from menu`)
+      while (agentsDropDown.options.length) {
+        agentsDropDown.remove(0);
+      }
+
+      // Add a "Select Agent" option
+      var option = document.createElement("option");
+      option.text = "-- Select Agent --";
+      option.value = "0";
+      document.getElementById("agentsDropDown").add(option);
+
+      getAgents(queueId)
+        .then((agentsListing) => {
+          //Create select option for each agent
+          console.log(`Adding ${agentsListing.entities.length} agents to menu`)
+          agentsListing.entities.forEach((user) => {
+            var option = document.createElement("option");
+            option.text = user.name;		//user-friendly agent name
+            option.value = user.id;		//Genesys Cloud userId
+            document.getElementById("agentsDropDown").add(option);
+          });
+        });
+    }
+
+    //Subscribe to conversation notifications for Genesys Cloud userId
+    function setAgent(agentId) {
+      if (agentId == 0) return;
+
+      document.getElementById('messages').innerText = '';
+      console.log(`Setting agent to (${agentId})`);
+      monitoredAgent = agentId;
+      userConversationsTopic = `v2.users.${monitoredAgent}.conversations`;
+      return notificationsApi.putNotificationsChannelSubscriptions(notificationChannel.id, [{ id: userConversationsTopic }]);
+    }
+
+    // Handle incoming Genesys Cloud notification from WebSocket
+    function handleNotification(message) {
+      // Parse notification string to a JSON object
+      const notification = JSON.parse(message.data);
+
+      // Discard unwanted notifications
+      if (notification.topicName.toLowerCase() === 'channel.metadata') {
+        // Heartbeat
+        //console.info('Ignoring metadata: ', notification);
+        return;
+
+        //If customer has end time populated, conversation is ended
+      } else if (notification.eventBody.participants.find(p => p.purpose == 'customer').endTime) {
+        console.log('ending conversation');
+        closeMessage();
+      } else {
+        var participants = notification.eventBody.participants;
+        var messages = [];
+        var participantPurposes = [];
+
+        //parse data for arrays of messages and which party sent each
+        for (x = 0; x < participants.length; x++) {
+          if (!participants[x].endTime) {
+            if (participants[x].messages) {
+              messages.push(participants[x].messages[0].messages[participants[x].messages[0].messages.length - 1]);
+              participantPurposes.push(participants[x].purpose);
             }
+          }
         }
-		
-		//put message content into HTML document with chosen formatting distinguishing internal and external sender
-		function printMessage(message, customer) {
-            var p = document.createElement("p");
-            if (customer)
-                p.className = "speechbubbleright";
-            else
-                p.className = "speechbubbleleft";
-            p.innerText = message;
-            document.getElementById("messages").appendChild(p);
-            document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
-		}
-		
-		//indicate the conversation is over and publish a break line
-		function closeMessage() {
-			var p = document.createElement("p");
-			var hr = document.createElement("hr");
-			p.className = "speechbubbleleft";
-			p.innerText = "Conversation ended";
-			document.getElementById('messages').appendChild(p);
-			document.getElementById('messages').appendChild(hr);
-			document.getElementById('messages').scrollTop = document.getElementById("messages").scrollHeight;
-		}
-		
 
-	</script>
+        var messageId = '';
+        var purpose = '';
+        var publish = false;
+        for (x = 0; x < messages.length; x++) {
+
+          //dismiss any messages already published
+          console.log('messageTime: ' + messages[x].messageTime);
+          if (messages[x].messageTime > mostRecentMessageTime) {
+            mostRecentMessageTime = messages[x].messageTime;
+            messageId = messages[x].messageId;
+            purpose = participantPurposes[x];
+            publish = true;
+          }
+        }
+
+        //if new messages are available, publish them to the document
+        if (publish) {
+          conversationsApi.getConversationsMessageMessage(notification.eventBody.id, messageId)
+            .then((messageDetail) => {
+              console.log('messageDetail: ' + JSON.stringify(messageDetail));
+              if (purpose == 'customer')
+                printMessage(messageDetail.textBody, true);
+              else
+                printMessage(messageDetail.textBody, false);
+            });
+        }
+      }
+    }
+
+    //put message content into HTML document with chosen formatting distinguishing internal and external sender
+    function printMessage(message, customer) {
+      var p = document.createElement("p");
+      if (customer)
+        p.className = "speechbubbleright";
+      else
+        p.className = "speechbubbleleft";
+      p.innerText = message;
+      document.getElementById("messages").appendChild(p);
+      document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+    }
+
+    //indicate the conversation is over and publish a break line
+    function closeMessage() {
+      var p = document.createElement("p");
+      var hr = document.createElement("hr");
+      p.className = "speechbubbleleft";
+      p.innerText = "Conversation ended";
+      document.getElementById('messages').appendChild(p);
+      document.getElementById('messages').appendChild(hr);
+      document.getElementById('messages').scrollTop = document.getElementById("messages").scrollHeight;
+    }
+
+
+  </script>
 </head>
+
 <body>
-	<div class="row">
-		<div class="col-sm-12">
-			<select id="queuesDropDown" onchange="updateAgents(this.value)"></select>
-			<select id="agentsDropDown" onchange="setAgent(this.value)"></select>
-		</div>
-	</div>
-	<div class="wrapper" id="messages"></div>
+  <div class="row">
+    <div class="col-sm-12">
+      <select id="queuesDropDown" onchange="updateAgents(this.value)"></select>
+      <select id="agentsDropDown" onchange="setAgent(this.value)"></select>
+    </div>
+  </div>
+  <div class="wrapper" id="messages"></div>
 
 </body>
+
 </html>
