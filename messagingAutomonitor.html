@@ -20,7 +20,7 @@
 		// Instantiate variables
 		//
 		
-		const clientId = ''; //NEED TO PUT IN AN IMPLICIT TOKEN GRANT OAUTH CLIENT ID
+		const clientId = '0959864a-9256-47e4-aa35-d7db53d61731';
 		const redirectUri = window.location.href;
 
 		// Set Genesys Cloud objects
@@ -31,8 +31,8 @@
 		const conversationsApi = new platformClient.ConversationsApi();
 
 		// Set Genesys Cloud settings
-		client.setEnvironment('mypurecloud.com');
-		client.setPersistSettings(true, 'Messaging monitor');
+		client.setEnvironment('mypurecloud.de');
+		client.setPersistSettings(true, 'Messaging Monitor');
 
 		// Local vars
 		let userConversationsTopic = '';
